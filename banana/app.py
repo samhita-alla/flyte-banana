@@ -9,15 +9,19 @@ def init():
 
     device = 0 if torch.cuda.is_available() else -1
 
-    model = AutoModelForSequenceClassification.from_pretrained(
-        model_dir, num_labels=5
-    )
+    model = AutoModelForSequenceClassification.from_pretrained("model", num_labels=5)
 
 
 # Inference is ran for every server call
 # Reference your preloaded global model variable here.
 def inference(model_inputs: dict) -> dict:
     global model
+
+    encoding = tokenizer("you're amazing", return_tensors="pt")
+
+# forward pass
+outputs = model(**encoding)
+predictions = outputs.logits.argmax(-1)
 
     # Parse out your arguments
     prompt = model_inputs.get("prompt", None)

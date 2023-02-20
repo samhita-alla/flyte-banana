@@ -1,6 +1,4 @@
-import base64
 import subprocess
-from io import BytesIO
 from pathlib import Path
 from typing import NamedTuple
 
@@ -106,59 +104,64 @@ def train(small_train_dataset: Dataset, small_eval_dataset: Dataset) -> FlyteDir
     return FlyteDirectory(path=str(local_dir))
 
 
-@task
-def push_to_github(model_dir: FlyteDirectory) -> None:
-    downloaded_path = model_dir.download()
+# @task
+def push_to_github() -> None:
+    # remote_src = model_dir.remote_source
+    # downloaded_path = model_dir.download()
+
+    downloaded_path = "/var/folders/zf/cxnrtk8s5sl4zzvhr2qnrqd80000gn/T/flytebhneth2q/user_spaceq5wek1lq/test_trainer"
+
     files = [f for f in Path(downloaded_path).iterdir() if f.is_file()]
     additions = []
 
     for each_file in files:
-        with open(each_file, "rb") as file_handler:
-            file_bytes = BytesIO(file_handler.read())
         additions.append(
             {
                 "path": f"banana/model/{each_file.name}",
-                "contents": base64.b64encode(file_bytes.getvalue().decode("utf-8")),
+                "contents": f"`echo '{each_file.name}' | base64`",
             }
         )
 
-    subprocess.run(
+    result = subprocess.run(
         f"""curl https://api.github.com/graphql \
-       -s -H "Authorization: bearer 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"
-       --data @- <<GRAPHQL | jq \
-         '.data.createCommitOnBranch.commit.url[0:56]'
-        {{
-        "query": "mutation (\$input: CreateCommitOnBranchInput!) {{
-            createCommitOnBranch(input: \$input) {{ commit {{ url }} }} }}",
-
-        "variables": {{
-            "input": {{
-            "branch": {{
-                "repositoryNameWithOwner": "samhita-alla/flyte-banana",
-                "branchName": "main"
-            }},
-            "message": {{"headline": "Update the model artifact" }},
-            "fileChanges": {{
-                "additions": {additions},
-            }},
-            "expectedHeadOid": "git rev-parse HEAD"
-        }}}}}}
-        GRAPHQL
+                 -s -H "Authorization: bearer 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" \
+                 --data @- <<GRAPHQL | jq \
+                  '.data.createCommitOnBranch.commit.url[0:56]'
+            {{
+              "query": "mutation (\$input: CreateCommitOnBranchInput!) {{
+                createCommitOnBranch(input: \$input) {{ commit {{ url }} }} }}",
+              "variables": {{
+                "input": {{
+                  "branch": {{
+                    "repositoryNameWithOwner": "samhita-alla/flyte-banana",
+                    "branchName": "main"
+                  }},
+                  "message": {{"headline": "Update the model artifact" }},
+                  "fileChanges": {{
+                    "additions": {additions},
+                  }},
+                  "expectedHeadOid": "`git rev-parse HEAD`"
+            }}}}}}
+            GRAPHQL
         """,
         shell=True,
+        capture_output=True,
+        text=True,
     )
+    print(result.stdout)
+    print(result.stderr)
 
 
-@workflow
-def yelp_pipeline() -> None:
-    dataset = download_dataset()
-    tokenized_datasets = tokenize(dataset=dataset)
-    split_dataset = get_train_eval(tokenized_datasets=tokenized_datasets)
-    model_dir = train(
-        small_train_dataset=split_dataset.train_dataset,
-        small_eval_dataset=split_dataset.eval_dataset,
-    )
-    push_to_github(model_dir=model_dir)
+# @workflow
+# def yelp_pipeline() -> None:
+#     dataset = download_dataset()
+#     tokenized_datasets = tokenize(dataset=dataset)
+#     split_dataset = get_train_eval(tokenized_datasets=tokenized_datasets)
+#     model_dir = train(
+#         small_train_dataset=split_dataset.train_dataset,
+#         small_eval_dataset=split_dataset.eval_dataset,
+#     )
+#     push_to_github(model_dir=model_dir)
 
 
-print(yelp_pipeline())
+push_to_github()
