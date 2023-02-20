@@ -1,4 +1,7 @@
+import base64
+import json
 import subprocess
+from datetime import timedelta
 from pathlib import Path
 from typing import NamedTuple
 
@@ -6,7 +9,8 @@ import evaluate
 import flytekit
 import numpy as np
 from datasets import Dataset, load_dataset, load_from_disk
-from flytekit import Resources, task, workflow
+from dotenv import load_dotenv
+from flytekit import Resources, Secret, approve, task, workflow
 from flytekit.types.directory import FlyteDirectory
 from transformers import (
     AutoModelForSequenceClassification,
@@ -15,6 +19,11 @@ from transformers import (
     TrainingArguments,
 )
 
+load_dotenv()
+
+
+SECRET_GROUP = "deployment-secrets"
+SECRET_NAME = "flyte-banana-creds"
 datasets_tuple = NamedTuple("datasets", train_dataset=Dataset, eval_dataset=Dataset)
 
 
@@ -104,64 +113,95 @@ def train(small_train_dataset: Dataset, small_eval_dataset: Dataset) -> FlyteDir
     return FlyteDirectory(path=str(local_dir))
 
 
-# @task
-def push_to_github() -> None:
-    # remote_src = model_dir.remote_source
-    # downloaded_path = model_dir.download()
-
-    downloaded_path = "/var/folders/zf/cxnrtk8s5sl4zzvhr2qnrqd80000gn/T/flytebhneth2q/user_spaceq5wek1lq/test_trainer"
+@task(secret_requests=[Secret(group=SECRET_GROUP, key=SECRET_NAME)])
+def push_to_github(
+    model_dir: FlyteDirectory, owner: str, repo: str, branch: str
+) -> str:
+    token = flytekit.current_context().secrets.get(SECRET_GROUP, SECRET_NAME)
+    remote_src = model_dir.remote_source or ""
+    downloaded_path = model_dir.download()
 
     files = [f for f in Path(downloaded_path).iterdir() if f.is_file()]
     additions = []
 
     for each_file in files:
+        remote_file_name = str(Path(remote_src) / each_file.name)
         additions.append(
             {
                 "path": f"banana/model/{each_file.name}",
-                "contents": f"`echo '{each_file.name}' | base64`",
+                "contents": f"{base64.b64encode(remote_file_name.encode('utf-8')).decode('utf-8')}",
             }
         )
 
-    result = subprocess.run(
-        f"""curl https://api.github.com/graphql \
-                 -s -H "Authorization: bearer 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" \
-                 --data @- <<GRAPHQL | jq \
-                  '.data.createCommitOnBranch.commit.url[0:56]'
-            {{
-              "query": "mutation (\$input: CreateCommitOnBranchInput!) {{
-                createCommitOnBranch(input: \$input) {{ commit {{ url }} }} }}",
-              "variables": {{
-                "input": {{
-                  "branch": {{
-                    "repositoryNameWithOwner": "samhita-alla/flyte-banana",
-                    "branchName": "main"
-                  }},
-                  "message": {{"headline": "Update the model artifact" }},
-                  "fileChanges": {{
-                    "additions": {additions},
-                  }},
-                  "expectedHeadOid": "`git rev-parse HEAD`"
-            }}}}}}
-            GRAPHQL
+    sha_result = subprocess.run(
+        f"""
+        curl -s -H "Authorization: bearer {token}" \
+        -H "Accept: application/vnd.github.VERSION.sha" \
+        "https://api.github.com/repos/{owner}/{repo}/commits/main"
         """,
         shell=True,
         capture_output=True,
         text=True,
     )
-    print(result.stdout)
-    print(result.stderr)
+
+    github_sha = sha_result.stdout
+
+    cmd = f"""
+curl https://api.github.com/graphql -s -H "Authorization: bearer {token}" --data @- << GRAPHQL | jq '.data.createCommitOnBranch.commit.url[0:56]'
+{{
+    "query": "mutation (\$input: CreateCommitOnBranchInput!) {{
+    createCommitOnBranch(input: \$input) {{
+        commit {{
+        url 
+        }} 
+    }} 
+    }}",
+    "variables": {{
+    "input": {{
+        "branch": {{
+        "repositoryNameWithOwner": "{owner}/{repo}",
+        "branchName": "{branch}"
+        }},
+        "message": {{
+        "headline": "Update the model artifact"
+        }},
+        "fileChanges": {{
+        "additions": {json.dumps(additions)}
+        }},
+        "expectedHeadOid": "{github_sha}"
+    }}
+    }}
+}}
+GRAPHQL
+"""
+
+    result = subprocess.run(
+        cmd,
+        shell=True,
+        capture_output=True,
+        text=True,
+    )
+
+    return result.stdout
 
 
-# @workflow
-# def yelp_pipeline() -> None:
-#     dataset = download_dataset()
-#     tokenized_datasets = tokenize(dataset=dataset)
-#     split_dataset = get_train_eval(tokenized_datasets=tokenized_datasets)
-#     model_dir = train(
-#         small_train_dataset=split_dataset.train_dataset,
-#         small_eval_dataset=split_dataset.eval_dataset,
-#     )
-#     push_to_github(model_dir=model_dir)
+@workflow
+def yelp_pipeline(owner: str, repo: str, branch: str) -> str:
+    dataset = download_dataset()
+    tokenized_datasets = tokenize(dataset=dataset)
+    split_dataset = get_train_eval(tokenized_datasets=tokenized_datasets)
+    model_dir = train(
+        small_train_dataset=split_dataset.train_dataset,
+        small_eval_dataset=split_dataset.eval_dataset,
+    )
+    approve_to_deploy = approve(model_dir, "deploy-model", timeout=timedelta(hours=1))
+    commit_model = push_to_github(
+        model_dir=model_dir, owner=owner, repo=repo, branch=branch
+    )
+    approve_to_deploy >> commit_model
+
+    return commit_model
 
 
-push_to_github()
+if __name__ == "__main__":
+    print(yelp_pipeline(owner="samhita-alla", repo="flyte-banana", branch="main"))

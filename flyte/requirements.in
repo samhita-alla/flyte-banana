@@ -4,3 +4,4 @@ evaluate
 torch
 scikit-learn
 flytekit
+python-dotenv

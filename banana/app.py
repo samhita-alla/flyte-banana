@@ -19,9 +19,9 @@ def inference(model_inputs: dict) -> dict:
 
     encoding = tokenizer("you're amazing", return_tensors="pt")
 
-# forward pass
-outputs = model(**encoding)
-predictions = outputs.logits.argmax(-1)
+    # forward pass
+    outputs = model(**encoding)
+    predictions = outputs.logits.argmax(-1)
 
     # Parse out your arguments
     prompt = model_inputs.get("prompt", None)

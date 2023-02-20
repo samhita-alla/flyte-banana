@@ -212,6 +212,8 @@ python-dateutil==2.8.2
     #   flytekit
     #   kubernetes
     #   pandas
+python-dotenv==0.21.1
+    # via -r requirements.in
 python-json-logger==2.0.6
     # via flytekit
 python-slugify==8.0.0
