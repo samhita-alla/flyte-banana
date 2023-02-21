@@ -152,24 +152,24 @@ curl https://api.github.com/graphql -s -H "Authorization: bearer {token}" --data
     "query": "mutation (\$input: CreateCommitOnBranchInput!) {{
     createCommitOnBranch(input: \$input) {{
         commit {{
-        url 
+          url 
         }} 
     }} 
     }}",
     "variables": {{
-    "input": {{
+      "input": {{
         "branch": {{
-        "repositoryNameWithOwner": "{owner}/{repo}",
-        "branchName": "{branch}"
+          "repositoryNameWithOwner": "{owner}/{repo}",
+          "branchName": "{branch}"
         }},
         "message": {{
         "headline": "Update the model artifact"
         }},
         "fileChanges": {{
-        "additions": {json.dumps(additions)}
+          "additions": {json.dumps(additions)}
         }},
         "expectedHeadOid": "{github_sha}"
-    }}
+      }}
     }}
 }}
 GRAPHQL

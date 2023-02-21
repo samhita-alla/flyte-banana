@@ -1,5 +1,5 @@
 import torch
-from transformers import AutoModelForSequenceClassification
+from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
 
 # Init is ran on server startup
@@ -8,8 +8,9 @@ def init():
     global model
 
     device = 0 if torch.cuda.is_available() else -1
-
-    model = AutoModelForSequenceClassification.from_pretrained("model", num_labels=5)
+    model = AutoModelForSequenceClassification.from_pretrained(
+        "model", num_labels=5
+    ).to(device)
 
 
 # Inference is ran for every server call
@@ -17,19 +18,19 @@ def init():
 def inference(model_inputs: dict) -> dict:
     global model
 
-    encoding = tokenizer("you're amazing", return_tensors="pt")
-
-    # forward pass
-    outputs = model(**encoding)
-    predictions = outputs.logits.argmax(-1)
+    device = 0 if torch.cuda.is_available() else -1
 
     # Parse out your arguments
     prompt = model_inputs.get("prompt", None)
     if prompt == None:
         return {"message": "No prompt provided"}
 
-    # Run the model
-    result = model(prompt)
+    tokenizer = AutoTokenizer.from_pretrained("bert-base-cased").to(device)
+    encoding = tokenizer(prompt, return_tensors="pt")
 
-    # Return the results as a dictionary
-    return result
+    # Run the model
+    outputs = model(**encoding)
+    prediction = outputs.logits.argmax(-1)
+
+    # Return the result as a dictionary
+    return {"result": prediction.item()}
