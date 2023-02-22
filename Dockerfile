@@ -5,7 +5,7 @@
 # Must use cuda version 11+
 FROM pytorch/pytorch:1.13.1-cuda11.6-cudnn8-runtime
 
-WORKDIR /
+WORKDIR /root
 
 # Install git
 RUN apt-get update && apt-get install -y git
@@ -16,13 +16,13 @@ ADD banana/requirements.txt requirements.txt
 RUN pip3 install -r requirements.txt
 
 # We add the banana boilerplate here
-ADD banana/server.py .
+ADD banana/server.py /root
 
 # Add your custom app code, init() and inference()
-ADD banana/app.py .
+ADD banana/app.py /root
 
 # Add model metadata
-ADD banana/model_metadata.json .
+ADD banana/model_metadata.json /root
 
 EXPOSE 8000
 
