@@ -6,6 +6,8 @@
 #
 aiofiles==23.1.0
     # via sanic
+banana-dev==4.0.1
+    # via -r requirements.in
 certifi==2022.12.7
     # via requests
 charset-normalizer==3.0.1
@@ -36,6 +38,7 @@ regex==2022.10.31
     # via transformers
 requests==2.28.2
     # via
+    #   banana-dev
     #   huggingface-hub
     #   transformers
 sanic==22.12.0

@@ -21,6 +21,9 @@ ADD banana/server.py .
 # Add your custom app code, init() and inference()
 ADD banana/app.py .
 
+# Add model metadata
+ADD banana/model_metadata.json .
+
 EXPOSE 8000
 
 CMD python3 -u server.py
