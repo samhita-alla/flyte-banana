@@ -6,16 +6,56 @@
 #
 aiofiles==23.1.0
     # via sanic
+certifi==2022.12.7
+    # via requests
+charset-normalizer==3.0.1
+    # via requests
+filelock==3.9.0
+    # via
+    #   huggingface-hub
+    #   transformers
 httptools==0.5.0
     # via sanic
+huggingface-hub==0.12.1
+    # via transformers
+idna==3.4
+    # via requests
 multidict==6.0.4
     # via sanic
+numpy==1.24.2
+    # via transformers
+packaging==23.0
+    # via
+    #   huggingface-hub
+    #   transformers
+pyyaml==6.0
+    # via
+    #   huggingface-hub
+    #   transformers
+regex==2022.10.31
+    # via transformers
+requests==2.28.2
+    # via
+    #   huggingface-hub
+    #   transformers
 sanic==22.12.0
     # via -r requirements.in
 sanic-routing==22.8.0
     # via sanic
+tokenizers==0.13.2
+    # via transformers
+tqdm==4.64.1
+    # via
+    #   huggingface-hub
+    #   transformers
+transformers==4.26.1
+    # via -r requirements.in
+typing-extensions==4.5.0
+    # via huggingface-hub
 ujson==5.7.0
     # via sanic
+urllib3==1.26.14
+    # via requests
 uvloop==0.17.0
     # via sanic
 websockets==10.4
