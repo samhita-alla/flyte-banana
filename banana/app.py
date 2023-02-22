@@ -1,3 +1,5 @@
+import json
+
 import torch
 from transformers import AutoModelForSequenceClassification, AutoTokenizer
 
@@ -7,9 +9,14 @@ from transformers import AutoModelForSequenceClassification, AutoTokenizer
 def init():
     global model
 
-    device = 0 if torch.cuda.is_available() else -1
+    with open("model_metadata.json") as f:
+        model_metadata = json.load(f)
+
+    device = "cuda:0" if torch.cuda.is_available() else "cpu"
     model = AutoModelForSequenceClassification.from_pretrained(
-        "model", num_labels=5
+        pretrained_model_name_or_path=model_metadata["repo"],
+        num_labels=5,
+        revision=model_metadata["sha"],
     ).to(device)
 
 
@@ -18,15 +25,16 @@ def init():
 def inference(model_inputs: dict) -> dict:
     global model
 
-    device = 0 if torch.cuda.is_available() else -1
-
     # Parse out your arguments
     prompt = model_inputs.get("prompt", None)
     if prompt == None:
         return {"message": "No prompt provided"}
 
-    tokenizer = AutoTokenizer.from_pretrained("bert-base-cased").to(device)
-    encoding = tokenizer(prompt, return_tensors="pt")
+    tokenizer = AutoTokenizer.from_pretrained("bert-base-cased")
+    encoding = tokenizer(
+        prompt, padding="max_length", truncation=True, return_tensors="pt"
+    )
+    # encoding = tokenizer(tokenized_text, return_tensors="pt")
 
     # Run the model
     outputs = model(**encoding)

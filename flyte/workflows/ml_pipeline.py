@@ -1,5 +1,6 @@
 import base64
 import json
+import os
 import subprocess
 from datetime import timedelta
 from pathlib import Path
@@ -12,6 +13,8 @@ from datasets import Dataset, load_dataset, load_from_disk
 from dotenv import load_dotenv
 from flytekit import Resources, Secret, approve, task, workflow
 from flytekit.types.directory import FlyteDirectory
+from flytekit.types.structured.structured_dataset import StructuredDataset
+from huggingface_hub import model_info
 from transformers import (
     AutoModelForSequenceClassification,
     AutoTokenizer,
@@ -21,10 +24,14 @@ from transformers import (
 
 load_dotenv()
 
-
+HUGGINGFACE_REPO = "fine-tuned-bert"
 SECRET_GROUP = "deployment-secrets"
 SECRET_NAME = "flyte-banana-creds"
-datasets_tuple = NamedTuple("datasets", train_dataset=Dataset, eval_dataset=Dataset)
+HF_SECRET_GROUP = "hf-secrets"
+HF_SECRET_NAME = "flyte-banana-hf-creds"
+datasets_tuple = NamedTuple(
+    "datasets", train_dataset=StructuredDataset, eval_dataset=StructuredDataset
+)
 
 
 def create_local_dir(dir_name: str):
@@ -61,6 +68,20 @@ def tokenize(dataset: FlyteDirectory) -> FlyteDirectory:
     return FlyteDirectory(path=str(local_dir))
 
 
+if os.getenv("DEMO") != "":
+    mem = "1Gi"
+    gpu = "0"
+    dataset_size = 10
+    # dataset_size = 100
+else:
+    mem = "1Gi"
+    gpu = "0"
+    dataset_size = 10
+    # mem = "3Gi"
+    # gpu = "1"
+    # dataset_size = 1000
+
+
 @task(requests=Resources(mem="1Gi", cpu="2"))
 def get_train_eval(
     tokenized_datasets: FlyteDirectory,
@@ -69,13 +90,14 @@ def get_train_eval(
     loaded_tokenized_datasets = load_from_disk(downloaded_path)
 
     small_train_dataset = (
-        loaded_tokenized_datasets["train"].shuffle(seed=42).select(range(10))
+        loaded_tokenized_datasets["train"].shuffle(seed=42).select(range(dataset_size))
     )
     small_eval_dataset = (
-        loaded_tokenized_datasets["test"].shuffle(seed=42).select(range(10))
+        loaded_tokenized_datasets["test"].shuffle(seed=42).select(range(dataset_size))
     )
     return datasets_tuple(
-        train_dataset=small_train_dataset, eval_dataset=small_eval_dataset
+        train_dataset=StructuredDataset(dataframe=small_train_dataset),
+        eval_dataset=StructuredDataset(dataframe=small_eval_dataset),
     )
 
 
@@ -86,18 +108,36 @@ def compute_metrics(eval_pred):
     return metric.compute(predictions=predictions, references=labels)
 
 
-@task(requests=Resources(mem="1Gi", gpu="1"))
-def train(small_train_dataset: Dataset, small_eval_dataset: Dataset) -> FlyteDirectory:
+@task(
+    requests=Resources(mem=mem, cpu="2", gpu=gpu),
+    secret_requests=[
+        Secret(
+            group=SECRET_GROUP,
+            key=HF_SECRET_NAME,
+            mount_requirement=Secret.MountType.FILE,
+        )
+    ],
+)
+def train(
+    small_train_df: StructuredDataset, small_eval_df: StructuredDataset, hf_user: str
+) -> dict:
+    HUGGING_FACE_HUB_TOKEN = flytekit.current_context().secrets.get(
+        SECRET_GROUP, HF_SECRET_NAME
+    )
+    repo = f"{hf_user}/{HUGGINGFACE_REPO}"
+    execution_id = flytekit.current_context().execution_id.name
+    small_train_dataset = small_train_df.open(Dataset).all()
+    small_eval_dataset = small_eval_df.open(Dataset).all()
+
     model = AutoModelForSequenceClassification.from_pretrained(
         "bert-base-cased", num_labels=5
     )
 
-    local_dir = create_local_dir(dir_name="test_trainer")
-
     training_args = TrainingArguments(
-        output_dir="./results",
+        output_dir=HUGGINGFACE_REPO,
         evaluation_strategy="epoch",
-        save_strategy="no",
+        push_to_hub=True,
+        hub_token=HUGGING_FACE_HUB_TOKEN,
     )
     trainer = Trainer(
         model=model,
@@ -108,36 +148,40 @@ def train(small_train_dataset: Dataset, small_eval_dataset: Dataset) -> FlyteDir
     )
 
     trainer.train()
-    trainer.save_model(local_dir)
+    trainer.push_to_hub(
+        commit_message=f"End of training - Flyte execution ID {execution_id}"
+    )
+    return {
+        "sha": model_info(repo).sha,
+        "execution_id": execution_id,
+        "repo": repo,
+    }
 
-    return FlyteDirectory(path=str(local_dir))
 
-
-@task(secret_requests=[Secret(group=SECRET_GROUP, key=SECRET_NAME)])
+@task(
+    secret_requests=[
+        Secret(
+            group=SECRET_GROUP, key=SECRET_NAME, mount_requirement=Secret.MountType.FILE
+        )
+    ]
+)
 def push_to_github(
-    model_dir: FlyteDirectory, owner: str, repo: str, branch: str
+    model_metadata: dict, gh_owner: str, gh_repo: str, gh_branch: str
 ) -> str:
     token = flytekit.current_context().secrets.get(SECRET_GROUP, SECRET_NAME)
-    remote_src = model_dir.remote_source or ""
-    downloaded_path = model_dir.download()
 
-    files = [f for f in Path(downloaded_path).iterdir() if f.is_file()]
-    additions = []
-
-    for each_file in files:
-        remote_file_name = str(Path(remote_src) / each_file.name)
-        additions.append(
-            {
-                "path": f"banana/model/{each_file.name}",
-                "contents": f"{base64.b64encode(remote_file_name.encode('utf-8')).decode('utf-8')}",
-            }
-        )
+    additions = [
+        {
+            "path": f"banana/model_metadata.json",
+            "contents": f"{base64.urlsafe_b64encode(json.dumps(model_metadata).encode()).decode('utf-8')}",
+        }
+    ]
 
     sha_result = subprocess.run(
         f"""
         curl -s -H "Authorization: bearer {token}" \
         -H "Accept: application/vnd.github.VERSION.sha" \
-        "https://api.github.com/repos/{owner}/{repo}/commits/main"
+        "https://api.github.com/repos/{gh_owner}/{gh_repo}/commits/main"
         """,
         shell=True,
         capture_output=True,
@@ -159,8 +203,8 @@ curl https://api.github.com/graphql -s -H "Authorization: bearer {token}" --data
     "variables": {{
       "input": {{
         "branch": {{
-          "repositoryNameWithOwner": "{owner}/{repo}",
-          "branchName": "{branch}"
+          "repositoryNameWithOwner": "{gh_owner}/{gh_repo}",
+          "branchName": "{gh_branch}"
         }},
         "message": {{
         "headline": "Update the model artifact"
@@ -186,17 +230,23 @@ GRAPHQL
 
 
 @workflow
-def yelp_pipeline(owner: str, repo: str, branch: str) -> str:
+def yelp_pipeline(gh_owner: str, gh_repo: str, gh_branch: str, hf_user: str) -> str:
     dataset = download_dataset()
     tokenized_datasets = tokenize(dataset=dataset)
     split_dataset = get_train_eval(tokenized_datasets=tokenized_datasets)
-    model_dir = train(
-        small_train_dataset=split_dataset.train_dataset,
-        small_eval_dataset=split_dataset.eval_dataset,
+    model_metadata = train(
+        small_eval_df=split_dataset.train_dataset,
+        small_train_df=split_dataset.eval_dataset,
+        hf_user=hf_user,
     )
-    approve_to_deploy = approve(model_dir, "deploy-model", timeout=timedelta(hours=1))
+    approve_to_deploy = approve(
+        model_metadata, "deploy-model", timeout=timedelta(hours=1)
+    )
     commit_model = push_to_github(
-        model_dir=model_dir, owner=owner, repo=repo, branch=branch
+        model_metadata=model_metadata,
+        gh_owner=gh_owner,
+        gh_repo=gh_repo,
+        gh_branch=gh_branch,
     )
     approve_to_deploy >> commit_model
 
@@ -204,4 +254,11 @@ def yelp_pipeline(owner: str, repo: str, branch: str) -> str:
 
 
 if __name__ == "__main__":
-    print(yelp_pipeline(owner="samhita-alla", repo="flyte-banana", branch="main"))
+    print(
+        yelp_pipeline(
+            gh_owner="samhita-alla",
+            gh_repo="flyte-banana",
+            gh_branch="main",
+            hf_user="Samhita",
+        )
+    )
