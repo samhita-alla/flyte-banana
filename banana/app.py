@@ -31,10 +31,11 @@ def inference(model_inputs: dict) -> dict:
         return {"message": "No prompt provided"}
 
     tokenizer = AutoTokenizer.from_pretrained("bert-base-cased")
+
+    device = "cuda:0" if torch.cuda.is_available() else "cpu"
     encoding = tokenizer(
         prompt, padding="max_length", truncation=True, return_tensors="pt"
-    )
-    # encoding = tokenizer(tokenized_text, return_tensors="pt")
+    ).to(device)
 
     # Run the model
     outputs = model(**encoding)

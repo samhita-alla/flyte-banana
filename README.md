@@ -1,10 +1,10 @@
 # Model Development and Inference with Flyte and Banana
 
-A fine-tuned version of [bert-base-cased](https://huggingface.co/bert-base-cased) model orchestrated with Flyte and deployed on Banana.
+A fine-tuned version of [bert-base-uncased](https://huggingface.co/bert-base-uncased) model orchestrated with Flyte and deployed on Banana.
 
 ## 🥞 Stack
 
-The technology stack comprises Flyte and Banana.
+The technology stack comprises Flyte, Banana and HuggingFace.
 
 ### Flyte
 [Flyte](https://flyte.org/) is a workflow orchestration platform that allows you to build production-grade data and ML pipelines.
@@ -14,10 +14,13 @@ The code for Flyte is located in the [flyte](flyte/) directory.
 [Banana](https://www.banana.dev/) provides inference hosting for ML models on serverless GPUs.
 The code for Banana is located in the [banana](banana/) directory.
 
+### HuggingFace
+The [HuggingFace Hub](https://huggingface.co/models) provides a seamless way to store and retrieve models, complete with built-in versioning.
+
 ## 🛠️ Setup
 
 1. Make a copy of this repository by forking it.
-2. Configure your Banana account by creating a deployment and linking to the forked GitHub repo. This can be done by navigating to Team > Integrations > GitHub > Manage Repos.
+2. Configure your Banana account by creating a deployment and linking to the forked GitHub repo. This can be done by navigating to Team > Integrations > GitHub > Manage Repos, and Deploy > Deploy from GitHub > your repo.
 3. Create a virtual environment and install the required Flyte and Banana dependencies.
 4. Obtain access tokens for HuggingFace and GitHub and store them in files within a secrets directory, as follows:
 
