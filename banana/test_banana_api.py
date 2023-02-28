@@ -11,7 +11,7 @@ model_key = os.getenv("BANANA_MODEL_KEY")
 
 
 def generate_predictions(args):
-    print(banana.run(api_key, model_key, {"prompt": args.prompt}))
+    print(banana.run(api_key, model_key, {"prompt": args.prompt})["modelOutputs"][0])
 
 
 if __name__ == "__main__":

@@ -41,10 +41,22 @@ def create_local_dir(dir_name: str):
     return local_dir
 
 
+if os.getenv("DEMO") != "":
+    mem = "1Gi"
+    gpu = "0"
+    dataset_size = 10
+    ephemeral_storage = "500Mi"
+else:
+    mem = "20Gi"
+    gpu = "1"
+    dataset_size = 100
+    ephemeral_storage = "40Gi"
+
+
 @task(
     cache=True,
     cache_version="1.0",
-    requests=Resources(mem="1Gi", cpu="2", ephemeral_storage="500Mi"),
+    requests=Resources(mem="1Gi", cpu="2", ephemeral_storage=ephemeral_storage),
 )
 def download_dataset() -> FlyteDirectory:
     dataset = load_dataset("yelp_review_full")
@@ -63,7 +75,7 @@ def tokenize_function(examples):
 @task(
     cache=True,
     cache_version="1.0",
-    requests=Resources(mem="1Gi", cpu="2", ephemeral_storage="500Mi"),
+    requests=Resources(mem="1Gi", cpu="2", ephemeral_storage=ephemeral_storage),
 )
 def tokenize(dataset: FlyteDirectory) -> FlyteDirectory:
     downloaded_path = dataset.download()
@@ -76,20 +88,7 @@ def tokenize(dataset: FlyteDirectory) -> FlyteDirectory:
     return FlyteDirectory(path=str(local_dir))
 
 
-if os.getenv("DEMO") != "":
-    mem = "1Gi"
-    gpu = "0"
-    dataset_size = 10
-else:
-    # mem = "1Gi"
-    # gpu = "0"
-    # dataset_size = 10
-    mem = "3Gi"
-    gpu = "1"
-    dataset_size = 100
-
-
-@task(requests=Resources(mem="1Gi", cpu="2"))
+@task(requests=Resources(mem="1Gi", cpu="2", ephemeral_storage=ephemeral_storage))
 def get_train_eval(
     tokenized_dataset: FlyteDirectory,
 ) -> datasets_tuple:
@@ -116,7 +115,7 @@ def compute_metrics(eval_pred):
 
 
 @task(
-    requests=Resources(mem=mem, cpu="2", gpu=gpu),
+    requests=Resources(mem=mem, cpu="2", gpu=gpu, ephemeral_storage=ephemeral_storage),
     secret_requests=[
         Secret(
             group=HF_SECRET_GROUP,
@@ -129,7 +128,7 @@ def train(
     small_train_df: StructuredDataset, small_eval_df: StructuredDataset, hf_user: str
 ) -> dict:
     HUGGING_FACE_HUB_TOKEN = flytekit.current_context().secrets.get(
-        SECRET_GROUP, HF_SECRET_NAME
+        HF_SECRET_GROUP, HF_SECRET_NAME
     )
     repo = f"{hf_user}/{HUGGINGFACE_REPO}"
     execution_id = flytekit.current_context().execution_id.name
@@ -170,7 +169,8 @@ def train(
         Secret(
             group=SECRET_GROUP, key=SECRET_NAME, mount_requirement=Secret.MountType.FILE
         )
-    ]
+    ],
+    requests=Resources(mem="1Gi", ephemeral_storage=ephemeral_storage),
 )
 def push_to_github(
     model_metadata: dict, gh_owner: str, gh_repo: str, gh_branch: str
