@@ -50,9 +50,17 @@ pyflyte run ml_pipelines.py --gh_owner <your-github-username> --gh_repo <your-gi
 pyflyte register --image <flyte-docker-image> ml_pipeline.py
 ```
    
-10. Launch the registered workflow on the UI.
-11. To deploy the retrained model on Banana, select "Yes".
-12. This action saves the model metadata, such as the latest commit SHA, Flyte execution ID, and HuggingFace username, in the corresponding GitHub repository.
-13. The GitHub push operation then triggers the Banana deployment process.
-14. Copy your Banana API and model keys, and store them in `.env` file.
-15. Once the deployment is complete, confirm that the Banana API endpoint is operational by executing [`banana/test_banana_api.py`](banana/test_banana_api.py) file.
+10. Create Kubernetes secrets to store GitHub and HuggingFace tokens as follows:
+
+```
+kubectl create secret generic deployment-secrets --namespace flytesnacks-development --from-file=flyte-banana-creds=<your-secrets-dir>/deployment-secrets/flyte-banana-creds
+
+kubectl create secret generic hf-secrets --namespace flytesnacks-development --from-file=flyte-banana-hf-creds=<your-secrets-dir>/hf-secrets/flyte-banana-hf-creds
+```
+
+11. Launch the registered workflow on the UI.
+12. To deploy the retrained model on Banana, select "Yes".
+13. This action saves the model metadata, such as the latest commit SHA, Flyte execution ID, and HuggingFace username, in the corresponding GitHub repository.
+14. The GitHub push operation then triggers the Banana deployment process.
+15. Copy your Banana API and model keys, and store them in `.env` file.
+16. Once the deployment is complete, confirm that the Banana API endpoint is operational by executing [`banana/test_banana_api.py`](banana/test_banana_api.py) file.
